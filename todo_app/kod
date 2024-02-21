@@ -1,1 +1,285 @@
+import tkinter as tk
+import json
 
+class AddNoteWindow:
+    def __init__(self, master, callback):
+        self.master = master
+        self.callback = callback
+        self.master.title("Додати нотатку")
+
+        # Лейбл та поле для назви нотатки
+        title_label = tk.Label(master, text="Назва нотатки:")
+        title_label.pack(pady=10)
+
+        self.entry_title = tk.Entry(master)
+        self.entry_title.pack(pady=10)
+
+        # Лейбл та поле для тексту нотатки
+        content_label = tk.Label(master, text="Текст нотатки:")
+        content_label.pack(pady=10)
+
+        self.text_content = tk.Text(master, height=5, width=40)
+        self.text_content.pack(pady=10)
+
+        # Кнопка для додавання нотатки
+        add_button = tk.Button(master, text="Додати нотатку", command=self.add_note)
+        add_button.pack(pady=10)
+        
+
+
+    def add_note(self):
+        title = self.entry_title.get()
+        content = self.text_content.get("1.0", tk.END)
+
+        # Викликати колбек-функцію для передачі даних головному вікну
+        self.callback(title, content)
+
+        # Закрити вікно
+        self.master.destroy()
+
+class EditNoteWindow:
+    def __init__(self, master, note_title, note_content, edit_callback):
+        self.master = master
+        self.note_title = note_title
+        self.edit_callback = edit_callback
+        master.title(f"Редагувати нотатку: {note_title}")
+
+        # Лейбл та поле для назви нотатки
+        title_label = tk.Label(master, text="Назва нотатки:")
+        title_label.pack(pady=5)
+
+        self.entry_title = tk.Entry(master)
+        self.entry_title.insert(0, note_title)
+        self.entry_title.pack(pady=5)
+
+        # Лейбл та поле для тексту нотатки
+        content_label = tk.Label(master, text="Текст нотатки:")
+        content_label.pack(pady=5)
+
+        self.text_content = tk.Text(master, height=5, width=40)
+        self.text_content.insert(tk.END, note_content)
+        self.text_content.pack(pady=5)
+
+        # Горизонтальний фрейм для кнопок
+        button_frame = tk.Frame(master)
+        button_frame.pack(side=tk.BOTTOM, padx=10, pady=10)
+
+        # Кнопка для позначення завдання як виконане
+        done_button = tk.Button(button_frame, text="Виконано", command=self.mark_as_done)
+        done_button.pack(side=tk.LEFT, padx=5)
+
+        # Кнопка для редагування нотатки
+        edit_button = tk.Button(button_frame, text="Редагувати", command=self.edit_note)
+        edit_button.pack(side=tk.LEFT, padx=5)
+
+        # Кнопка для видалення завдання
+        delete_button = tk.Button(button_frame, text="Видалити", command=self.delete_note)
+        delete_button.pack(side=tk.LEFT, padx=5)
+
+    def mark_as_done(self):
+        # Отримати нову назву та вміст нотатки
+        new_title = self.entry_title.get()
+        new_content = self.text_content.get("1.0", tk.END)
+
+        # Викликати колбек для позначення нотатки як виконаної
+        self.edit_callback(self.note_title, new_title, new_content, marked_as_done=True)
+        self.master.destroy()
+
+    def edit_note(self):
+        # Отримати нову назву та вміст нотатки
+        new_title = self.entry_title.get()
+        new_content = self.text_content.get("1.0", tk.END)
+
+        # Викликати колбек для редагування нотатки
+        self.edit_callback(self.note_title, new_title, new_content, marked_as_done=False)
+        self.master.destroy()
+
+    def delete_note(self):
+        # Викликати колбек для видалення нотатки
+        self.edit_callback(self.note_title, "", "", marked_as_done=False, delete=True)
+        self.master.destroy()
+
+
+class Organizer:
+    def __init__(self, master):
+        self.master = master
+        master.title("Todo App")
+
+        # Фрейм для лівої частини екрану
+        self.left_frame = tk.Frame(master, width=150, height=300)
+        self.left_frame.pack_propagate(0)  # Запобігає автоматичному змінюванню розміру фрейму
+        self.left_frame.pack(side=tk.LEFT, fill=tk.Y)
+
+        # Додамо кнопку "Додати нотатку" зверху
+        add_note_button = tk.Button(self.left_frame, text="Додати нотатку", command=self.show_add_note_window)
+        add_note_button.pack(pady=10)
+
+        # Список нотаток
+        self.notes_listbox = tk.Listbox(self.left_frame, selectmode=tk.SINGLE, exportselection=False)
+        self.notes_listbox.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        # Завантаження нотаток з файлу
+        global notes_dict
+        notes_dict = self.load_notes_from_file()
+
+        # Додавання нотаток до списку при старті
+        self.update_notes_listbox()
+        
+        # Додамо можливість прокрутки списку мишею
+        scrollbar = tk.Scrollbar(self.left_frame, orient=tk.VERTICAL, command=self.notes_listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.notes_listbox.config(yscrollcommand=scrollbar.set)
+        
+        # Приєднати подію подвійного натискання до відповідного методу
+        self.notes_listbox.bind('<Double-1>', self.edit_selected_note)
+        
+        # Завантаження історії з файлу
+        self.history = {}  
+        self.load_history_from_file()
+
+        # Фрейм для правої частини екрану
+        self.right_frame = tk.Frame(master, width=300, height=300)
+        self.right_frame.pack_propagate(0)  # Запобігає автоматичному змінюванню розміру фрейму
+        self.right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Текстове поле для виведення тексту вибраної нотатки
+        self.note_text_display = tk.Text(self.right_frame, wrap=tk.WORD, state=tk.DISABLED, font=("Helvetica", 14))
+        self.note_text_display.pack(expand=True, fill=tk.BOTH)
+        
+        # Приєднати подію вибору нотатки до відповідного методу
+        self.notes_listbox.bind('<<ListboxSelect>>', self.display_selected_note)
+        
+    
+    def show_add_note_window(self):
+        # Створення нового вікна для додавання нотатки
+        add_note_window = tk.Toplevel(self.master)
+        AddNoteWindow(add_note_window, self.add_note)
+        
+
+    def add_note(self, title, content):
+        # Збереження нової нотатки в словник
+        notes_dict[title] = content
+
+        # Збереження нотаток у файл
+        self.save_notes_to_file(notes_dict)
+
+        # Оновлення списку нотаток
+        self.update_notes_listbox()
+    
+    def edit_selected_note(self, event):
+        # Отримати вибраний елемент зі списку
+        selected_index = self.notes_listbox.curselection()
+
+        if selected_index:
+            selected_note_title = self.notes_listbox.get(selected_index)
+            selected_note_content = notes_dict.get(selected_note_title, "")
+
+            # Створення нового вікна для редагування нотатки
+            edit_note_window = tk.Toplevel(self.master)
+            EditNoteWindow(edit_note_window, selected_note_title, selected_note_content, self.update_note)
+            
+    def update_note1(self, old_title, new_title, new_content):
+        # Видалення старої нотатки
+        del notes_dict[old_title]
+
+        # Збереження нової нотатки
+        notes_dict[new_title] = new_content
+
+        # Збереження нотаток у файл
+        self.save_notes_to_file(notes_dict)
+
+        # Оновлення списку нотаток
+        self.update_notes_listbox()
+    
+    def update_note(self, old_title, new_title, new_content, marked_as_done=False, delete=False):
+        if delete:
+            # Додавання видаленої нотатки до історії
+            self.add_to_history(new_title, new_content)
+            # Видалення нотатки
+            del notes_dict[old_title]
+            
+        elif marked_as_done:
+            # Позначення нотатки як виконаної
+            
+            # Додавання виконаної нотатки до історії
+            self.add_to_history(new_title, new_content)
+           # Видалення нотатки
+            del notes_dict[old_title]
+
+        elif new_title != old_title:
+            # Оновлення назви та вмісту нотатки
+            notes_dict[new_title] = new_content
+            # Видалення нотатки
+            del notes_dict[old_title]
+            
+        else:
+            # Оновлення назви та вмісту нотатки
+            notes_dict[old_title] = new_content
+            
+        # Збереження змін у файл
+        self.save_notes_to_file(notes_dict)
+
+        # Оновлення списку нотаток
+        self.update_notes_listbox()
+
+        
+    def load_notes_from_file(self):
+        try:
+            with open("notes.json", "r") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return {}
+    
+    def save_notes_to_file(self, notes_dict):
+        with open("notes.json", "w") as file:
+            json.dump(notes_dict, file)
+
+    def update_notes_listbox(self):
+        # Очищення та оновлення списку нотаток
+        self.notes_listbox.delete(0, tk.END)
+        for title in notes_dict.keys():
+            self.notes_listbox.insert(tk.END, title)
+    
+    def display_selected_note(self, event):
+        # Отримати вибраний елемент зі списку
+        selected_index = self.notes_listbox.curselection()
+
+        if selected_index:
+            # Очистити текстове поле виведення
+            self.note_text_display.config(state=tk.NORMAL)
+            self.note_text_display.delete("1.0", tk.END)
+
+            # Отримати текст вибраної нотатки зі словника
+            selected_note_title = self.notes_listbox.get(selected_index)
+            selected_note_text = notes_dict.get(selected_note_title, "Зміст нотатки відсутній.")
+
+            # Вивести текст вибраної нотатки у текстове поле
+            self.note_text_display.insert(tk.END, f"Текст нотатки '{selected_note_title}':\n\n{selected_note_text}")
+            self.note_text_display.config(state=tk.DISABLED)
+    
+    
+    def add_to_history(self, note_title, note_content):
+        self.history[note_title] = note_content
+        self.save_history_to_file()  # Збереження історії у файл
+
+    def load_history_from_file(self):
+        try:
+            with open("history.json", "r") as file:
+                self.history = json.load(file)
+                self.history = dict(list(self.history.items())[-1:-11:-1])
+        except FileNotFoundError:
+            # Якщо файл не знайдено, залишити історію пустою
+            self.history = {}
+
+    def save_history_to_file(self):
+        with open("history.json", "w") as file:
+            json.dump(dict(list(self.history.items())[-1:-11:-1]), file)
+
+    
+
+
+
+root = tk.Tk()
+app = Organizer(root)
+
+root.mainloop()
